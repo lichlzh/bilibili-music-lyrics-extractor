@@ -11,6 +11,7 @@
 - 实时展示每首歌曲的下载 / 转码进度与状态（等待 / 下载中 / 转码中 / 完成 / 失败 / 已取消）
 - 支持单条取消、清空已完成、选择输出目录、并发数设置
 - 歌单与设置自动持久化（基于 `electron-store`）
+- 下载完成后**自动抓取同名歌词 `.lrc`** 并做「曲名相似度 + 音频时长」双重校验；适配 GC200Pro 等需要带时间轴歌词的音箱（仅纯文本时按音频时长合成近似时间轴）
 
 ## 技术栈
 
@@ -46,6 +47,10 @@ npm run dist     # 产出安装包到 dist/ 目录
 
 > 说明：个人使用场景下 macOS 未做代码签名 / 公证（`identity: null`）。在 macOS 上首次打开未签名 dmg 时，可能需在「系统设置 → 隐私与安全性」中手动允许。如需对外发布，请配置 Apple Developer 证书。
 
+### Windows 自动构建（GitHub Actions）
+
+仓库已内置 `.github/workflows/build-windows.yml`：推送代码到 `main`/`master` 会自动在 Windows runner 上 `npm ci` → `npm run dist`，并把 `dist/`（含 `Setup.exe`）作为 Artifact 上传。无需本地 Windows 即可获取安装包（详情见 `docs/implementation.md` 第 6 节）。
+
 ## 与原脚本的关系
 
 仓库中原有的两个 Shell 脚本保留作为参考，未被改动：
@@ -66,3 +71,9 @@ songDownload/
 │   └── renderer/                 # React 界面：App + components + styles
 └── README.md
 ```
+
+## 📚 文档
+
+- [用户使用手册](docs/user-guide.md)：安装、操作步骤、歌词状态说明、GC200Pro 音箱适配与注意事项。
+- [技术实现文档](docs/implementation.md)：架构、下载 / 转码、歌词匹配与校验算法、二进制策略、构建与 CI。
+
