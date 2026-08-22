@@ -90,7 +90,7 @@ src/
 
 - 触发：打 `v*` tag（`git tag v1.0.1 && git push --tags`），或手动 `workflow_dispatch`。**不再监听分支推送**。
 - 权限：`permissions: contents: write`（供 electron-builder 发布 Release 使用）。
-- 单任务矩阵（`release`，`macos-latest` / `windows-latest`，`fail-fast: false`），每平台步骤：
+- 单任务矩阵（`release`，`macos-latest` / `windows-latest`，`fail-fast: false`，`max-parallel: 1` 串行发布以避免两平台并发写同一 Release 时的资产互删竞态），每平台步骤：
   1. `actions/checkout@v4` 检出代码；
   2. `actions/setup-node@v4`（Node 20，启用 npm 缓存）；
   3. `npm ci`（依据 `package-lock.json` 精确安装，对应平台会拉到正确的 ffmpeg 二进制）；
