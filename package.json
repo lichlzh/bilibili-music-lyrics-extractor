@@ -55,6 +55,11 @@
     },
     "win": {
       "target": "nsis"
+    },
+    "publish": {
+      "provider": "github",
+      "owner": "lichlzh",
+      "repo": "bilibili-music-lyrics-extractor"
     }
   }
 }

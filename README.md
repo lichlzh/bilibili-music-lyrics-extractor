@@ -56,8 +56,8 @@ git tag v1.0.1
 git push --tags        # 触发 CI：macOS(dmg) + Windows(exe) 构建并发布
 ```
 
-- 运行矩阵：`macos-latest` 产出 `.dmg`，`windows-latest` 产出 NSIS `.exe`，两者汇总到同一 Release。
-- 发布：`softprops/action-gh-release` 用该 tag 创建 Release，自动上传 `dist/` 产物并生成变更说明，借内置 `GITHUB_TOKEN` 完成，无需额外配置。
+- 运行矩阵：`macos-latest` 产出 `.dmg`，`windows-latest` 产出 NSIS `.exe`，两者由 electron-builder 原生发布到同一 Release。
+- 发布：各平台在构建后由 `electron-builder --publish always` 直接写入 GitHub Release（基于 `package.json` 的 `build.publish` 配置 + 内置 `GITHUB_TOKEN`），无需额外发布步骤。
 - 也可在 Actions 页面手动 `workflow_dispatch` 触发。
 - 详情见 `docs/implementation.md` 第 6 节。
 
