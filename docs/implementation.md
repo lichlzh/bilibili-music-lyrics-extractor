@@ -86,17 +86,20 @@ src/
 
 ## 6. 持续集成（GitHub Actions）
 
-文件：`.github/workflows/build-windows.yml`
+文件：`.github/workflows/release.yml`
 
-- 触发：`push` 到 `main` / `master`，或手动 `workflow_dispatch`。
-- 运行环境：`windows-latest`。
-- 步骤：
+- 触发：打 `v*` tag（`git tag v1.0.1 && git push --tags`），或手动 `workflow_dispatch`。**不再监听分支推送**。
+- 权限：`permissions: contents: write`（供软发布使用）。
+- `build` 任务（矩阵 `macos-latest` / `windows-latest`，`fail-fast: false`）：
   1. `actions/checkout@v4` 检出代码；
   2. `actions/setup-node@v4`（Node 20，启用 npm 缓存）；
-  3. `npm ci`（依据 `package-lock.json` 精确安装，Windows 上会拉到正确的 ffmpeg 二进制）；
-  4. `npm run dist`（`electron-vite build` + `electron-builder`，在 Windows runner 上只构建 win 目标）；
-  5. `actions/upload-artifact@v4` 上传整个 `dist/`（含 `Setup.exe`）供下载。
-- 未使用发布（Publish），不依赖 `GH_TOKEN`；产物以 Artifact 形式提供，个人使用足够。
+  3. `npm ci`（依据 `package-lock.json` 精确安装，对应平台会拉到正确的 ffmpeg 二进制）；
+  4. `npm run dist`（`electron-vite build` + `electron-builder`，各 runner 只构建本平台目标：macOS→`dmg`，Windows→`nsis`）；
+  5. `actions/upload-artifact@v4` 把 `dist/` 暂存为 `dist-<os>`。
+- `release` 任务（`ubuntu-latest`，`needs: build`）：
+  1. `actions/download-artifact@v4` 汇总两个平台的产物；
+  2. `softprops/action-gh-release@v2` 用当前 tag 创建 Release，上传所有 `dist/**` 文件，并 `generate_release_notes: true` 自动生成变更说明；借 `secrets.GITHUB_TOKEN` 发布，无需额外配置。
+- 说明：macOS 端因 `identity: null` 未签名，下载的 `.dmg` 首次打开需在「系统设置 → 隐私与安全性」手动允许（与本地打包一致）。
 
 ---
 

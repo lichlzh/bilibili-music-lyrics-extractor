@@ -47,9 +47,19 @@ npm run dist     # 产出安装包到 dist/ 目录
 
 > 说明：个人使用场景下 macOS 未做代码签名 / 公证（`identity: null`）。在 macOS 上首次打开未签名 dmg 时，可能需在「系统设置 → 隐私与安全性」中手动允许。如需对外发布，请配置 Apple Developer 证书。
 
-### Windows 自动构建（GitHub Actions）
+### 打 tag 自动发布（GitHub Actions）
 
-仓库已内置 `.github/workflows/build-windows.yml`：推送代码到 `main`/`master` 会自动在 Windows runner 上 `npm ci` → `npm run dist`，并把 `dist/`（含 `Setup.exe`）作为 Artifact 上传。无需本地 Windows 即可获取安装包（详情见 `docs/implementation.md` 第 6 节）。
+仓库已内置 `.github/workflows/release.yml`：**打 `v*` 标签即可触发双平台构建并自动发布到 GitHub Release**。
+
+```bash
+git tag v1.0.1
+git push --tags        # 触发 CI：macOS(dmg) + Windows(exe) 构建并发布
+```
+
+- 运行矩阵：`macos-latest` 产出 `.dmg`，`windows-latest` 产出 NSIS `.exe`，两者汇总到同一 Release。
+- 发布：`softprops/action-gh-release` 用该 tag 创建 Release，自动上传 `dist/` 产物并生成变更说明，借内置 `GITHUB_TOKEN` 完成，无需额外配置。
+- 也可在 Actions 页面手动 `workflow_dispatch` 触发。
+- 详情见 `docs/implementation.md` 第 6 节。
 
 ## 与原脚本的关系
 
