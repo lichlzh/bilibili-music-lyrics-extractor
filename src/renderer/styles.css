@@ -1,0 +1,62 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  color-scheme: dark;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+  margin: 0;
+}
+
+body {
+  font-family: 'PingFang SC', system-ui, -apple-system, sans-serif;
+  background:
+    radial-gradient(1200px 600px at 15% -10%, rgba(99, 102, 241, 0.25), transparent 60%),
+    radial-gradient(1000px 500px at 110% 10%, rgba(34, 211, 238, 0.18), transparent 55%),
+    linear-gradient(160deg, #0b1120 0%, #111827 55%, #0b1120 100%);
+  color: #f8fafc;
+  overflow: hidden;
+}
+
+.glass {
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
+}
+
+.glass-strong {
+  background: rgba(255, 255, 255, 0.09);
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  backdrop-filter: blur(18px);
+  -webkit-backdrop-filter: blur(18px);
+}
+
+.btn-grad {
+  background-image: linear-gradient(135deg, #22d3ee 0%, #3b82f6 50%, #6366f1 100%);
+}
+
+.btn-grad:hover {
+  filter: brightness(1.08);
+}
+
+.btn-grad:active {
+  transform: translateY(1px);
+}
+
+/* 自定义滚动条 */
+*::-webkit-scrollbar {
+  width: 8px;
+}
+*::-webkit-scrollbar-thumb {
+  background: rgba(148, 163, 184, 0.35);
+  border-radius: 9999px;
+}
+*::-webkit-scrollbar-thumb:hover {
+  background: rgba(148, 163, 184, 0.55);
+}
