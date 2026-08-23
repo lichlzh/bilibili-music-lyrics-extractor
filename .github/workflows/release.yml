@@ -1,6 +1,6 @@
 name: Release
 
-# 打 tag（v*）或手动触发：双平台构建并由 electron-builder 直接发布到 GitHub Release
+# 打 tag（v*）或手动触发：双平台分别构建并打包，最后统一发布到 GitHub Release
 on:
   push:
     tags:
@@ -11,12 +11,11 @@ permissions:
   contents: write
 
 jobs:
-  release:
-    name: Build & Publish ${{ matrix.os }}
+  build:
+    name: Build ${{ matrix.os }}
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
-      max-parallel: 1
       matrix:
         os: [macos-latest, windows-latest]
     steps:
@@ -32,9 +31,39 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
-      - name: Build & Publish to GitHub Release
+      # 只构建并打包到 dist/，不在此步骤发布（--publish never）
+      - name: Build & package
+        run: npm run dist
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: dist-${{ matrix.os }}
+          path: dist/**/*
+
+  release:
+    name: Publish GitHub Release
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      # 汇总双平台产物到 dist/
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: dist
+          pattern: dist-*
+          merge-multiple: true
+
+      - name: List artifacts
+        run: ls -R dist
+
+      # 单个任务统一创建 Release 并上传所有资产，避免并发写同一 Release 互相覆盖
+      - name: Create Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ github.ref_name }}
+          name: ${{ github.ref_name }}
+          files: dist/**/*
+          fail_on_unmatched_files: false
         env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        # electron-vite 编译后，交由 electron-builder 在 CI + tag + GH_TOKEN 下直接发布到 GitHub Release
-        # （本地 npm run dist 仍带 --publish never，不会误发布）
-        run: npm run build && npx electron-builder --publish always
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
