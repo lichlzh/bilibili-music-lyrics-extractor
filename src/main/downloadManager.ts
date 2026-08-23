@@ -2,8 +2,9 @@ import { spawn, type ChildProcess } from 'node:child_process'
 import path from 'node:path'
 import { BrowserWindow } from 'electron'
 import { getFfmpegPath, getYtDlpPath, sanitizeName } from './binaries'
-import { fetchAndSaveLyrics } from './lyrics'
+import { fetchAndSaveLyrics, calibrateLyrics, saveLyricsFile, getAudioDuration } from './lyrics'
 import type {
+  AlignMethod,
   DownloadStatus,
   LyricsInfo,
   ProgressPayload,
@@ -18,6 +19,7 @@ export class DownloadManager {
   private queue: SongItem[] = []
   private active = new Map<string, ChildProcess>()
   private outputDir = ''
+  private settings: Settings = { outputDir: '', concurrency: 2, alignMethod: 'signal' }
 
   setWindow(win: BrowserWindow): void {
     this.win = win
@@ -27,9 +29,14 @@ export class DownloadManager {
     this.concurrency = Math.max(1, Math.min(4, n || 2))
   }
 
+  setSettings(s: Settings): void {
+    this.settings = s
+  }
+
   startAll(items: SongItem[], settings: Settings): void {
     this.outputDir = settings.outputDir
     this.concurrency = settings.concurrency
+    this.settings = settings
     this.queue = items.filter(
       (i) => i.status !== 'done' && i.status !== 'downloading' && i.status !== 'converting'
     )
@@ -114,17 +121,12 @@ export class DownloadManager {
     }
   }
 
-  /** MP3 下载完成后，自动检索并保存同名 .lrc，并回传对应校验结果。 */
+  /** MP3 下载完成后，先检索歌词(阶段1)，再按需做本地时间轴校准(阶段2)，分别回传状态。 */
   private async attachLyrics(item: SongItem, mp3Path: string): Promise<void> {
     try {
       const lyrics = await fetchAndSaveLyrics(item.name, item.type, mp3Path, item.url)
-      const tail =
-        lyrics.status === 'downloaded'
-          ? ' · 歌词已下载'
-          : lyrics.status === 'mismatch'
-            ? ' · 歌词可能不符'
-            : ' · 未找到歌词'
-      this.emit(item.id, 100, 'done', `已保存为 MP3${tail}`, mp3Path, lyrics)
+      this.emitLyrics(item.id, mp3Path, lyrics)
+      await this.calibrateAndEmit(item.id, mp3Path, lyrics)
     } catch (e) {
       this.emit(
         item.id,
@@ -135,6 +137,82 @@ export class DownloadManager {
         { status: 'notfound', note: e instanceof Error ? e.message : String(e) }
       )
     }
+  }
+
+  /**
+   * 对已有歌词做本地时间轴校准，并向渲染端回传进度。
+   * 即使歌词源已带时间轴也仍校准：歌词与 mp3 往往来自不同来源，时间轴可能错位。
+   */
+  private async calibrateAndEmit(id: string, mp3Path: string, base: LyricsInfo): Promise<void> {
+    const method = this.settings.alignMethod ?? 'off'
+    if (method === 'off' || !base.plainText || !base.path) return
+    this.emitLyrics(id, mp3Path, { ...base, alignMethod: method, calibrateStatus: 'calibrating' })
+    try {
+      const aligned = await calibrateLyrics(
+        base.plainText,
+        mp3Path,
+        base.audioDur!,
+        method,
+        getFfmpegPath()
+      )
+      await saveLyricsFile(base.path, aligned)
+      const label = method === 'signal' ? '信号对齐' : 'WhisperX'
+      const note = `${base.note ? base.note + ' · ' : ''}已校准(${label})`
+      this.emitLyrics(id, mp3Path, {
+        ...base,
+        synced: true,
+        calibrated: true,
+        alignMethod: method,
+        calibrateStatus: 'done',
+        note
+      })
+    } catch (e) {
+      const note = `${base.note ? base.note + ' · ' : ''}校准失败，保留原时间轴`
+      this.emitLyrics(id, mp3Path, { ...base, calibrateStatus: 'failed', note })
+    }
+  }
+
+  /** 对已完成下载的歌曲重新做时间轴校准（UI 触发），使用当前设置的对齐方式。 */
+  async recalibrateSong(item: SongItem): Promise<void> {
+    const ly = item.lyrics
+    const mp3Path = item.outputPath
+    if (!ly || !mp3Path) return
+    if (this.settings.alignMethod === 'off') {
+      this.emitLyrics(item.id, mp3Path, {
+        ...ly,
+        calibrateStatus: 'failed',
+        note: `${ly.note ? ly.note + ' · ' : ''}未开启校准方式`
+      })
+      return
+    }
+    if (!ly.path || !ly.plainText) {
+      this.emitLyrics(item.id, mp3Path, {
+        ...ly,
+        calibrateStatus: 'failed',
+        note: `${ly.note ? ly.note + ' · ' : ''}无可校准歌词`
+      })
+      return
+    }
+    // 尽量取音频时长；取不到也无妨，信号对齐器会从音频自身推导总时长
+    let audioDur = ly.audioDur ?? 0
+    if (audioDur <= 0) {
+      try {
+        audioDur = (await getAudioDuration(mp3Path, item.url)) ?? 0
+      } catch {
+        audioDur = 0
+      }
+    }
+    await this.calibrateAndEmit(item.id, mp3Path, { ...ly, audioDur })
+  }
+
+  private emitLyrics(id: string, mp3Path: string, lyrics: LyricsInfo): void {
+    const tail =
+      lyrics.status === 'downloaded'
+        ? ' · 歌词已下载'
+        : lyrics.status === 'mismatch'
+          ? ' · 歌词可能不符'
+          : ' · 未找到歌词'
+    this.emit(id, 100, 'done', `已保存为 MP3${tail}`, mp3Path, lyrics)
   }
 
   private emit(

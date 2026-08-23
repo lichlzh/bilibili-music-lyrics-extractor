@@ -9,6 +9,7 @@ const api = {
   startAll: (songs: SongItem[], settings: Settings): Promise<void> =>
     ipcRenderer.invoke('download:startAll', songs, settings),
   cancel: (id: string): Promise<void> => ipcRenderer.invoke('download:cancel', id),
+  recalibrate: (item: SongItem): Promise<void> => ipcRenderer.invoke('lyrics:recalibrate', item),
   openLyrics: (p: string): Promise<string> => ipcRenderer.invoke('lyrics:open', p),
   onProgress: (cb: (payload: ProgressPayload) => void): (() => void) => {
     const listener = (_e: unknown, payload: ProgressPayload): void => cb(payload)

@@ -7,6 +7,7 @@ export interface AppApi {
   selectOutputDir: () => Promise<string | null>
   startAll: (songs: SongItem[], settings: Settings) => Promise<void>
   cancel: (id: string) => Promise<void>
+  recalibrate: (item: SongItem) => Promise<void>
   openLyrics: (path: string) => Promise<string>
   onProgress: (cb: (payload: ProgressPayload) => void) => () => void
 }

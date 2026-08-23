@@ -1,13 +1,20 @@
-import { FolderOpen, Cpu } from 'lucide-react'
-import type { Settings } from '../../shared/types'
+import { FolderOpen, Cpu, SlidersHorizontal } from 'lucide-react'
+import type { AlignMethod, Settings } from '../../shared/types'
 
 interface Props {
   settings: Settings
   onSelectDir: () => void
   onConcurrency: (n: number) => void
+  onAlignMethod: (m: AlignMethod) => void
 }
 
-export function SettingsBar({ settings, onSelectDir, onConcurrency }: Props) {
+const ALIGN_OPTIONS: { value: AlignMethod; label: string; disabled?: boolean }[] = [
+  { value: 'off', label: '不校准' },
+  { value: 'signal', label: '信号对齐' },
+  { value: 'whisperx', label: 'WhisperX(即将支持)', disabled: true }
+]
+
+export function SettingsBar({ settings, onSelectDir, onConcurrency, onAlignMethod }: Props) {
   return (
     <div className="glass mb-3 flex flex-wrap items-center gap-4 rounded-2xl px-4 py-3">
       <button
@@ -31,6 +38,22 @@ export function SettingsBar({ settings, onSelectDir, onConcurrency }: Props) {
           {[1, 2, 3, 4].map((n) => (
             <option key={n} value={n} className="bg-slate-800">
               {n}
+            </option>
+          ))}
+        </select>
+      </div>
+
+      <div className="flex items-center gap-2">
+        <SlidersHorizontal className="h-4 w-4 text-slate-400" />
+        <span className="text-[13px] text-slate-400">校准</span>
+        <select
+          value={settings.alignMethod}
+          onChange={(e) => onAlignMethod(e.target.value as AlignMethod)}
+          className="rounded-lg bg-black/30 px-2.5 py-1.5 text-[13px] text-slate-100 outline-none ring-1 ring-white/10 focus:ring-cyan-400/60"
+        >
+          {ALIGN_OPTIONS.map((o) => (
+            <option key={o.value} value={o.value} disabled={o.disabled} className="bg-slate-800">
+              {o.label}
             </option>
           ))}
         </select>

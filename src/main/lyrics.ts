@@ -2,8 +2,8 @@ import { promises as fsp } from 'node:fs'
 import path from 'node:path'
 import { spawn } from 'node:child_process'
 import iconv from 'iconv-lite'
-import { getFfprobePath, getYtDlpPath } from './binaries'
-import type { LyricsInfo, SongType } from '../shared/types'
+import { getFfprobePath, getYtDlpPath, getFfmpegPath } from './binaries'
+import type { AlignMethod, LyricsInfo, SongType } from '../shared/types'
 
 const LRCLIB = 'https://lrclib.net/api'
 
@@ -102,7 +102,7 @@ interface NeteaseSong {
 }
 
 /** 读取音频真实时长（秒）：优先 ffprobe，否则回退 yt-dlp 元数据。 */
-async function getAudioDuration(mp3Path: string, url: string): Promise<number | null> {
+export async function getAudioDuration(mp3Path: string, url: string): Promise<number | null> {
   const ffprobe = await getFfprobePath()
   if (ffprobe) {
     try {
@@ -207,6 +207,165 @@ function synthesizeSynced(plain: string, totalDur: number): string {
     .join('\n')
 }
 
+/** 以 GBK 写出 .lrc（兼容 GC200 Pro 等按 GBK 解读的硬件）。 */
+export async function saveLyricsFile(lrcPath: string, text: string): Promise<void> {
+  await fsp.writeFile(lrcPath, iconv.encode(text + '\n', 'gbk'))
+}
+
+/**
+ * 歌词对齐器接口：给定纯文本行与音频，返回带时间轴的 LRC 文本。
+ * 后续接入 WhisperX 等 ML 方案时，只需实现同一接口并在 getAligner 注册即可。
+ */
+export interface LyricAligner {
+  method: AlignMethod
+  align(plain: string, mp3Path: string, audioDur: number, ffmpeg: string | null): Promise<string>
+}
+
+const PCM_SR = 22050
+const HOP_SEC = 0.05
+const HOP = Math.floor(PCM_SR * HOP_SEC)
+
+/** 用 ffmpeg 提取人声频段(200–3000Hz)的原始 PCM，返回 Int16 采样数组。 */
+async function extractPcm(mp3Path: string, ffmpeg: string | null): Promise<Int16Array> {
+  const bin = ffmpeg || 'ffmpeg'
+  const args = [
+    '-i', mp3Path,
+    '-vn', '-ac', '1', '-ar', String(PCM_SR),
+    '-af', 'highpass=f=200,lowpass=f=3000',
+    '-f', 's16le', '-'
+  ]
+  const out = await new Promise<Buffer>((resolve, reject) => {
+    const child = spawn(bin, args, { windowsHide: true })
+    const chunks: Buffer[] = []
+    child.stdout.on('data', (d: Buffer) => chunks.push(d))
+    child.stderr.on('data', () => {})
+    child.on('close', (code) => (code === 0 ? resolve(Buffer.concat(chunks)) : reject(new Error(`ffmpeg exit ${code}`))))
+    child.on('error', reject)
+  })
+  if (out.length < HOP * 2) throw new Error('音频提取为空')
+  const n = Math.floor(out.length / 2)
+  const samples = new Int16Array(n)
+  for (let i = 0; i < n; i++) samples[i] = out.readInt16LE(i * 2)
+  return samples
+}
+
+/** 基于能量起音把每行歌词对齐到演唱时刻（A 方案：本地信号对齐）。 */
+class SignalAligner implements LyricAligner {
+  method: AlignMethod = 'signal'
+
+  async align(plain: string, mp3Path: string, audioDur: number, ffmpeg: string | null): Promise<string> {
+    const lines = plain.split('\n').map((l) => l.trim()).filter(Boolean)
+    if (lines.length === 0) return plain.trim()
+
+    const samples = await extractPcm(mp3Path, ffmpeg)
+    const derivedDur = samples.length / PCM_SR
+    const dur = audioDur > 0 ? audioDur : derivedDur
+    const frames: number[] = []
+    for (let i = 0; i < samples.length; i += HOP) {
+      const end = Math.min(i + HOP, samples.length)
+      let sum = 0
+      for (let j = i; j < end; j++) {
+        const v = samples[j] / 32768
+        sum += v * v
+      }
+      frames.push(Math.sqrt(sum / (end - i)))
+    }
+    const maxE = Math.max(...frames) || 1
+    const norm = frames.map((e) => e / maxE)
+    const thr = 0.22
+    // 人声活跃段
+    const segs: { start: number; end: number }[] = []
+    let i = 0
+    while (i < norm.length) {
+      if (norm[i] > thr) {
+        let j = i
+        while (j < norm.length && norm[j] > thr) j++
+        const start = i * HOP_SEC
+        const end = j * HOP_SEC
+        if (end - start >= 0.3) segs.push({ start, end })
+        i = j
+      } else i++
+    }
+    const times = assignTimes(lines.length, segs, dur)
+    return lines.map((l, idx) => `${lrcTimestamp(times[idx] ?? dur)} ${l}`).join('\n')
+  }
+}
+
+/** 把 N 行按人声段分布到时间序列，保证单调递增且在 [0, audioDur] 内。 */
+function assignTimes(n: number, segs: { start: number; end: number }[], audioDur: number): number[] {
+  // 起音锚点：每段起点，长段(>6s)再加一个中点
+  const anchors: number[] = []
+  for (const s of segs) {
+    anchors.push(s.start)
+    if (s.end - s.start > 6) anchors.push((s.start + s.end) / 2)
+  }
+  anchors.sort((a, b) => a - b)
+
+  if (anchors.length === 0) {
+    // 未检测到人声：退化为整段均分
+    return Array.from({ length: n }, (_, i) => (audioDur * (i + 0.5)) / n)
+  }
+  if (anchors.length >= n) {
+    const times: number[] = []
+    for (let i = 0; i < n; i++) {
+      const idx = n === 1 ? 0 : Math.round((i * (anchors.length - 1)) / (n - 1))
+      times.push(anchors[idx])
+    }
+    for (let i = 1; i < n; i++) if (times[i] <= times[i - 1]) times[i] = times[i - 1] + 0.1
+    return times
+  }
+  // 锚点少于行数：按段时长把行分配到各段内线性铺开
+  const segs2 = segs.length ? segs : [{ start: 0, end: audioDur }]
+  const totalLen = segs2.reduce((a, s) => a + (s.end - s.start), 0) || audioDur
+  const counts = segs2.map((s) => Math.max(1, Math.round((n * (s.end - s.start)) / totalLen)))
+  let diff = n - counts.reduce((a, b) => a + b, 0)
+  let k = 0
+  while (diff !== 0) {
+    counts[k % counts.length] += Math.sign(diff)
+    diff -= Math.sign(diff)
+    k++
+  }
+  const times: number[] = []
+  segs2.forEach((s, si) => {
+    const c = counts[si]
+    for (let li = 0; li < c; li++) {
+      const t = c === 1 ? s.start : s.start + ((s.end - s.start) * (li + 0.5)) / c
+      times.push(t)
+    }
+  })
+  times.sort((a, b) => a - b)
+  return times
+}
+
+/** 根据校准方式返回对应对齐器；whisperx 等未实现方案返回 null。 */
+export function getAligner(method: AlignMethod): LyricAligner | null {
+  switch (method) {
+    case 'signal':
+      return new SignalAligner()
+    case 'whisperx':
+      // TODO(B 方案): 接入 WhisperX / 强制对齐模型后在此返回实例
+      return null
+    default:
+      return null
+  }
+}
+
+/**
+ * 纯文本歌词 + 音频 → 校准后的带时间轴 LRC 文本。
+ * 失败(如 ffmpeg 不可用)时抛错，由调用方回退到均分时间轴。
+ */
+export async function calibrateLyrics(
+  plain: string,
+  mp3Path: string,
+  audioDur: number,
+  method: AlignMethod,
+  ffmpeg: string | null
+): Promise<string> {
+  const aligner = getAligner(method)
+  if (!aligner) throw new Error(`校准方式未实现: ${method}`)
+  return aligner.align(plain, mp3Path, audioDur, ffmpeg)
+}
+
 /** 曲名相似度达标门槛：低于此值视为“检索返回的是别的歌”，绝不采用。 */
 const NAME_MIN = 0.5
 
@@ -283,10 +442,13 @@ export async function fetchAndSaveLyrics(
   }
 
   const hasSyncedSource = !!best.syncedLyrics
-  let text = (best.syncedLyrics || best.plainLyrics || '').trim()
+  const rawText = (best.syncedLyrics || best.plainLyrics || '').trim()
+  let text = rawText
   let synced = hasSyncedSource
+  // 去时间标签后的纯文本行，留给后续的本地校准阶段使用
+  const plainText = stripTimestamps(rawText).join('\n')
 
-  // 仅有纯文本、但音频时长可用 → 合成近似时间轴，便于音箱滚动显示
+  // 仅有纯文本、但音频时长可用 → 先合成近似时间轴，便于音箱滚动显示（校准阶段会覆盖）
   if (!hasSyncedSource && audioDur != null && audioDur > 0) {
     text = synthesizeSynced(text, audioDur)
     synced = true
@@ -300,7 +462,7 @@ export async function fetchAndSaveLyrics(
   const base = path.basename(mp3Path, '.mp3')
   const lrcPath = path.join(dir, `${base}.lrc`)
   // GC200 Pro 等嵌入式/云音箱硬件按 GBK 解读 .lrc 字节，UTF-8 会乱码，故以 GBK 写出
-  await fsp.writeFile(lrcPath, iconv.encode(text + '\n', 'gbk'))
+  await saveLyricsFile(lrcPath, text)
 
   const span = synced ? lrcSpan(text) : best.duration ?? 0
 
@@ -329,6 +491,9 @@ export async function fetchAndSaveLyrics(
     status,
     path: lrcPath,
     note: notes.join(' · '),
-    synced
+    synced,
+    plainText,
+    sourceSynced: hasSyncedSource,
+    audioDur: audioDur ?? undefined
   }
 }

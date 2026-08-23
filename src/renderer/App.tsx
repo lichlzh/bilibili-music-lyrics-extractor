@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from 'react'
 import { Music, Play, Trash2, ShieldAlert } from 'lucide-react'
-import type { Settings, SongItem, SongType } from '../shared/types'
+import type { AlignMethod, Settings, SongItem, SongType } from '../shared/types'
 import { AddSongForm } from './components/AddSongForm'
 import { SongList } from './components/SongList'
 import { SettingsBar } from './components/SettingsBar'
@@ -13,14 +13,15 @@ export default function App() {
   const [songs, setSongs] = useState<SongItem[]>([])
   const [settings, setSettings] = useState<Settings>({
     outputDir: '',
-    concurrency: 2
+    concurrency: 2,
+    alignMethod: 'signal'
   })
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
     window.api.getStore().then((data) => {
       setSongs(data.songs ?? [])
-      setSettings(data.settings ?? { outputDir: '', concurrency: 2 })
+      setSettings(data.settings ?? { outputDir: '', concurrency: 2, alignMethod: 'signal' })
       setLoading(false)
     })
   }, [])
@@ -81,6 +82,10 @@ export default function App() {
     void window.api.cancel(id)
   }, [])
 
+  const handleRecalibrate = useCallback((item: SongItem) => {
+    void window.api.recalibrate(item)
+  }, [])
+
   const handleStartAll = useCallback(() => {
     const next = songs.map((s) =>
       s.status === 'done' || s.status === 'error' || s.status === 'canceled'
@@ -113,6 +118,15 @@ export default function App() {
     [settings]
   )
 
+  const handleAlignMethod = useCallback(
+    async (m: AlignMethod) => {
+      const next = { ...settings, alignMethod: m }
+      setSettings(next)
+      await window.api.setSettings(next)
+    },
+    [settings]
+  )
+
   const activeCount = songs.filter(
     (s) => s.status === 'downloading' || s.status === 'converting'
   ).length
@@ -134,6 +148,7 @@ export default function App() {
         settings={settings}
         onSelectDir={handleSelectDir}
         onConcurrency={handleConcurrency}
+        onAlignMethod={handleAlignMethod}
       />
 
       <AddSongForm onAdd={handleAdd} />
@@ -168,6 +183,7 @@ export default function App() {
             onRemove={handleRemove}
             onCancel={handleCancel}
             onOpenLyrics={(p) => void window.api.openLyrics(p)}
+            onRecalibrate={handleRecalibrate}
           />
         )}
       </div>

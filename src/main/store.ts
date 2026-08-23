@@ -7,13 +7,14 @@ const store = new Store<StoreData>({ name: 'bilibili-mp3' })
 
 const defaultSettings: Settings = {
   outputDir: path.join(os.homedir(), 'Downloads', 'songs'),
-  concurrency: 2
+  concurrency: 2,
+  alignMethod: 'signal'
 }
 
 export function loadStore(): StoreData {
   return {
     songs: (store.get('songs') as SongItem[]) ?? [],
-    settings: (store.get('settings') as Settings) ?? defaultSettings
+    settings: { ...defaultSettings, ...(store.get('settings') as Settings) }
   }
 }
 

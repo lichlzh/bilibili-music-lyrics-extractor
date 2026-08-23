@@ -8,9 +8,16 @@ export const manager = new DownloadManager()
 export function registerIpc(win: BrowserWindow): void {
   manager.setWindow(win)
 
-  ipcMain.handle('store:get', () => loadStore())
+  ipcMain.handle('store:get', () => {
+    const data = loadStore()
+    manager.setSettings(data.settings)
+    return data
+  })
   ipcMain.handle('store:setSongs', (_e, songs: SongItem[]) => saveSongs(songs))
-  ipcMain.handle('store:setSettings', (_e, settings: Settings) => saveSettings(settings))
+  ipcMain.handle('store:setSettings', (_e, settings: Settings) => {
+    manager.setSettings(settings)
+    return saveSettings(settings)
+  })
 
   ipcMain.handle('dialog:selectOutputDir', async () => {
     const result = await dialog.showOpenDialog(win, {
@@ -23,5 +30,6 @@ export function registerIpc(win: BrowserWindow): void {
     manager.startAll(songs, settings)
   })
   ipcMain.handle('download:cancel', (_e, id: string) => manager.cancel(id))
+  ipcMain.handle('lyrics:recalibrate', (_e, item: SongItem) => manager.recalibrateSong(item))
   ipcMain.handle('lyrics:open', (_e, p: string) => shell.openPath(p))
 }
