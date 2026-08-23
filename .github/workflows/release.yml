@@ -57,13 +57,18 @@ jobs:
       - name: List artifacts
         run: ls -R dist
 
+      # 幂等保险：若同 tag 已存在 Release（手动创建/上次失败残留），先删掉再重建
+      - name: Remove any existing release for this tag
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: gh release delete "${GITHUB_REF_NAME}" --yes || true
+
       # 单个任务统一创建 Release 并上传所有资产，避免并发写同一 Release 互相覆盖
       - name: Create Release
         uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ github.ref_name }}
           name: ${{ github.ref_name }}
+          token: ${{ secrets.GITHUB_TOKEN }}
           files: dist/**/*
           fail_on_unmatched_files: false
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
