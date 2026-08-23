@@ -1,6 +1,7 @@
 import { promises as fsp } from 'node:fs'
 import path from 'node:path'
 import { spawn } from 'node:child_process'
+import iconv from 'iconv-lite'
 import { getFfprobePath, getYtDlpPath } from './binaries'
 import type { LyricsInfo, SongType } from '../shared/types'
 
@@ -298,7 +299,8 @@ export async function fetchAndSaveLyrics(
   const dir = path.dirname(mp3Path)
   const base = path.basename(mp3Path, '.mp3')
   const lrcPath = path.join(dir, `${base}.lrc`)
-  await fsp.writeFile(lrcPath, text + '\n', 'utf8')
+  // GC200 Pro 等嵌入式/云音箱硬件按 GBK 解读 .lrc 字节，UTF-8 会乱码，故以 GBK 写出
+  await fsp.writeFile(lrcPath, iconv.encode(text + '\n', 'gbk'))
 
   const span = synced ? lrcSpan(text) : best.duration ?? 0
 
