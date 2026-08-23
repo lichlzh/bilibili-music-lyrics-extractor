@@ -58,9 +58,10 @@ jobs:
         run: ls -R dist
 
       # 幂等保险：若同 tag 已存在 Release（手动创建/上次失败残留），先删掉再重建
+      # 使用 PAT（RELEASE_TOKEN）以绕过 GITHUB_TOKEN 的权限限制
       - name: Remove any existing release for this tag
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_TOKEN: ${{ secrets.RELEASE_TOKEN }}
         run: gh release delete "${GITHUB_REF_NAME}" --yes || true
 
       # 单个任务统一创建 Release 并上传所有资产，避免并发写同一 Release 互相覆盖
@@ -69,6 +70,6 @@ jobs:
         with:
           tag_name: ${{ github.ref_name }}
           name: ${{ github.ref_name }}
-          token: ${{ secrets.GITHUB_TOKEN }}
+          token: ${{ secrets.RELEASE_TOKEN }}
           files: dist/**/*
           fail_on_unmatched_files: false
