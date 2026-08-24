@@ -32,11 +32,7 @@ jobs:
         run: npm ci
 
       # 只构建并打包到 dist/，不在此步骤发布（--publish never）
-      # 若仓库设置了 CSC_LINK / CSC_KEY_PASSWORD 密钥（代码签名证书），electron-builder 会自动签名
       - name: Build & package
-        env:
-          CSC_LINK: ${{ secrets.CSC_LINK }}
-          CSC_KEY_PASSWORD: ${{ secrets.CSC_KEY_PASSWORD }}
         run: npm run dist
 
       - name: Upload artifacts
