@@ -214,7 +214,7 @@ export async function saveLyricsFile(lrcPath: string, text: string): Promise<voi
 
 /**
  * 歌词对齐器接口：给定纯文本行与音频，返回带时间轴的 LRC 文本。
- * 后续接入 WhisperX 等 ML 方案时，只需实现同一接口并在 getAligner 注册即可。
+ * 目前仅有本地信号对齐(A 方案)实现，在 getAligner 中注册。
  */
 export interface LyricAligner {
   method: AlignMethod
@@ -337,17 +337,9 @@ function assignTimes(n: number, segs: { start: number; end: number }[], audioDur
   return times
 }
 
-/** 根据校准方式返回对应对齐器；whisperx 等未实现方案返回 null。 */
+/** 根据校准方式返回对应对齐器；目前仅本地信号对齐(A 方案)可用。 */
 export function getAligner(method: AlignMethod): LyricAligner | null {
-  switch (method) {
-    case 'signal':
-      return new SignalAligner()
-    case 'whisperx':
-      // TODO(B 方案): 接入 WhisperX / 强制对齐模型后在此返回实例
-      return null
-    default:
-      return null
-  }
+  return method === 'signal' ? new SignalAligner() : null
 }
 
 /**

@@ -10,8 +10,7 @@ interface Props {
 
 const ALIGN_OPTIONS: { value: AlignMethod; label: string; disabled?: boolean }[] = [
   { value: 'off', label: '不校准' },
-  { value: 'signal', label: '信号对齐' },
-  { value: 'whisperx', label: 'WhisperX(即将支持)', disabled: true }
+  { value: 'signal', label: '信号对齐' }
 ]
 
 export function SettingsBar({ settings, onSelectDir, onConcurrency, onAlignMethod }: Props) {

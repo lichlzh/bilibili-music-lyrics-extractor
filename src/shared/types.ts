@@ -1,7 +1,7 @@
 export type SongType = '原唱' | '伴奏'
 
-/** 歌词时间轴校准方式：off=不校准(沿用源或均分)，signal=本地信号对齐(A 方案)，whisperx=ML 强制对齐(B 方案，预留未实现) */
-export type AlignMethod = 'off' | 'signal' | 'whisperx'
+/** 歌词时间轴校准方式：off=不校准(沿用源或均分)，signal=本地信号对齐(A 方案) */
+export type AlignMethod = 'off' | 'signal'
 
 export type DownloadStatus =
   | 'waiting'

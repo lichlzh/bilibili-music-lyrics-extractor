@@ -156,7 +156,7 @@ export class DownloadManager {
         getFfmpegPath()
       )
       await saveLyricsFile(base.path, aligned)
-      const label = method === 'signal' ? '信号对齐' : 'WhisperX'
+      const label = method === 'signal' ? '信号对齐' : '未校准'
       const note = `${base.note ? base.note + ' · ' : ''}已校准(${label})`
       this.emitLyrics(id, mp3Path, {
         ...base,

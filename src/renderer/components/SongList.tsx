@@ -56,7 +56,6 @@ const CALIBRATE_STYLE: Record<string, string> = {
 /** 把对齐方式枚举转成中文短名，便于徽标展示。 */
 function methodName(m?: AlignMethod): string {
   if (m === 'signal') return '信号对齐'
-  if (m === 'whisperx') return 'WhisperX'
   return ''
 }
 
