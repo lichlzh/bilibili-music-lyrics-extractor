@@ -57,10 +57,7 @@
       "identity": null
     },
     "win": {
-      "target": "nsis",
-      "signing": {
-        "timestampServer": "http://timestamp.digicert.com"
-      }
+      "target": "nsis"
     },
     "nsis": {
       "perMachine": false,
