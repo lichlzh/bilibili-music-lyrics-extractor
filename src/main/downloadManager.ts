@@ -79,6 +79,8 @@ export class DownloadManager {
         '--no-playlist',
         '--newline',
         '--ignore-errors',
+        '--force-ipv4',
+        '--retries', '3',
         '-o', outTemplate,
         item.url
       ]
@@ -87,8 +89,10 @@ export class DownloadManager {
       const child = spawn(ytDlp, args)
       this.active.set(item.id, child)
 
+      let stderrText = ''
       const onData = (chunk: Buffer): void => {
         const text = chunk.toString()
+        stderrText += text
         const m = text.match(/(\d+(?:\.\d+)?)%/)
         if (m) this.emit(item.id, parseFloat(m[1]), 'downloading')
         if (/ExtractAudio|ffmpeg/i.test(text)) this.emit(item.id, 100, 'converting')
@@ -104,14 +108,22 @@ export class DownloadManager {
           this.emit(item.id, 100, 'done', '已保存为 MP3', finalPath)
           void this.attachLyrics(item, finalPath)
         } else {
-          this.emit(item.id, 0, 'error', `yt-dlp 退出码 ${code}`)
+          // 4294967295 = 0xFFFFFFFF = -1(无符号)，通常是进程被系统拦截(Defender/杀软)或崩溃
+          const blocked = code === 4294967295 || code === -1
+          const tail = stderrText.trim().split('\n').filter(Boolean).slice(-5).join(' | ')
+          const hint = blocked
+            ? 'yt-dlp 进程被系统拦截（常见于 Windows Defender/杀软拦截未签名二进制）。请在杀软中为应用目录添加排除，或到该 bin 目录手动运行 yt-dlp.exe 排查。'
+            : tail
+              ? `yt-dlp 失败：${tail}`
+              : `yt-dlp 退出码 ${code}`
+          this.emit(item.id, 0, 'error', hint)
         }
         this.pump()
       })
       child.on('error', (err) => {
         this.running--
         this.active.delete(item.id)
-        this.emit(item.id, 0, 'error', err.message)
+        this.emit(item.id, 0, 'error', `无法启动 yt-dlp：${err.message}（可能被系统/杀软拦截）`)
         this.pump()
       })
     } catch (e) {

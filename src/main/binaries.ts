@@ -43,7 +43,8 @@ export async function initBinaries(): Promise<void> {
   systemFfmpeg = (await resolveSystem('ffmpeg')) !== null
 }
 
-/** 优先使用系统已安装的 yt-dlp，否则下载到 userData 并缓存路径。 */
+/** 优先使用系统已安装的 yt-dlp；打包后优先用随应用分发的副本(避免运行时访问 GitHub)；
+ *  最后才回退到运行时从 GitHub 下载并缓存到 userData。 */
 export async function getYtDlpPath(): Promise<string> {
   if (ytDlpPathCache) return ytDlpPathCache
 
@@ -51,6 +52,24 @@ export async function getYtDlpPath(): Promise<string> {
   if (system) {
     ytDlpPathCache = system
     return system
+  }
+
+  // 打包后优先使用内置二进制（构建期已通过 scripts/fetch-yt-dlp.cjs 下载进 resources/bin/）
+  if (app.isPackaged) {
+    const bundledName =
+      process.platform === 'win32' ? 'yt-dlp.exe' : process.platform === 'darwin' ? 'yt-dlp-macos' : 'yt-dlp-linux'
+    const bundled = path.join(process.resourcesPath, 'bin', bundledName)
+    if (await exists(bundled)) {
+      if (process.platform !== 'win32') {
+        try {
+          await fsp.chmod(bundled, 0o755)
+        } catch {
+          /* 忽略：权限已正确时无需处理 */
+        }
+      }
+      ytDlpPathCache = bundled
+      return bundled
+    }
   }
 
   const dir = path.join(app.getPath('userData'), 'bin')
