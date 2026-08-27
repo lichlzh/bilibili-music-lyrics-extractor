@@ -3,6 +3,7 @@ import { join } from 'node:path'
 import { existsSync } from 'node:fs'
 import { registerIpc } from './ipc'
 import { initBinaries } from './binaries'
+import { checkForUpdates } from './updater'
 
 let mainWindow: BrowserWindow | null = null
 
@@ -32,6 +33,9 @@ function createWindow(): void {
   }
 
   registerIpc(mainWindow)
+
+  // 启动后静默检查更新（仅发现新版本时提示，网络不可达则忽略）
+  void checkForUpdates(true)
 }
 
 app.whenReady().then(createWindow)

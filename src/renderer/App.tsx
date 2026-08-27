@@ -4,6 +4,7 @@ import type { AlignMethod, Settings, SongItem, SongType } from '../shared/types'
 import { AddSongForm } from './components/AddSongForm'
 import { SongList } from './components/SongList'
 import { SettingsBar } from './components/SettingsBar'
+import { UpdateChecker } from './components/UpdateChecker'
 
 function uid(): string {
   return crypto.randomUUID()
@@ -188,9 +189,12 @@ export default function App() {
         )}
       </div>
 
-      <footer className="mt-3 flex items-center gap-2 border-t border-white/10 pt-3 text-[12px] text-slate-500">
-        <ShieldAlert className="h-4 w-4 text-amber-400" />
-        仅供个人学习 / 欣赏使用，请遵守 B 站及版权相关规定。
+      <footer className="mt-3 flex items-center justify-between gap-3 border-t border-white/10 pt-3 text-[12px] text-slate-500">
+        <span className="flex items-center gap-2">
+          <ShieldAlert className="h-4 w-4 text-amber-400" />
+          仅供个人学习 / 欣赏使用，请遵守 B 站及版权相关规定。
+        </span>
+        <UpdateChecker />
       </footer>
     </div>
   )

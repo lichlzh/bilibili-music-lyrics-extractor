@@ -65,6 +65,14 @@ export interface StoreData {
   settings: Settings
 }
 
+/** 检查更新状态：idle=未检查, checking=检查中, available=有新版, latest=已是最新, error=检查失败 */
+export type UpdateState =
+  | { state: 'idle' }
+  | { state: 'checking' }
+  | { state: 'available'; version: string; url: string; notes?: string }
+  | { state: 'latest'; version: string }
+  | { state: 'error'; message: string; url: string }
+
 export const STATUS_LABEL: Record<DownloadStatus, string> = {
   waiting: '等待中',
   downloading: '下载中',

@@ -1,4 +1,4 @@
-import type { ProgressPayload, Settings, SongItem, StoreData } from '../shared/types'
+import type { ProgressPayload, Settings, SongItem, StoreData, UpdateState } from '../shared/types'
 
 export interface AppApi {
   getStore: () => Promise<StoreData>
@@ -9,7 +9,10 @@ export interface AppApi {
   cancel: (id: string) => Promise<void>
   recalibrate: (item: SongItem) => Promise<void>
   openLyrics: (path: string) => Promise<string>
+  checkForUpdates: () => Promise<void>
+  openExternal: (url: string) => Promise<void>
   onProgress: (cb: (payload: ProgressPayload) => void) => () => void
+  onUpdateStatus: (cb: (status: UpdateState) => void) => () => void
 }
 
 declare global {

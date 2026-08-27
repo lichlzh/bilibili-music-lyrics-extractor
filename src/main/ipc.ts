@@ -1,12 +1,14 @@
 import { dialog, ipcMain, shell, type BrowserWindow } from 'electron'
 import { DownloadManager } from './downloadManager'
 import { loadStore, saveSettings, saveSongs } from './store'
+import { checkForUpdates, setUpdaterWindow } from './updater'
 import type { Settings, SongItem } from '../shared/types'
 
 export const manager = new DownloadManager()
 
 export function registerIpc(win: BrowserWindow): void {
   manager.setWindow(win)
+  setUpdaterWindow(win)
 
   ipcMain.handle('store:get', () => {
     const data = loadStore()
@@ -32,4 +34,6 @@ export function registerIpc(win: BrowserWindow): void {
   ipcMain.handle('download:cancel', (_e, id: string) => manager.cancel(id))
   ipcMain.handle('lyrics:recalibrate', (_e, item: SongItem) => manager.recalibrateSong(item))
   ipcMain.handle('lyrics:open', (_e, p: string) => shell.openPath(p))
+  ipcMain.handle('app:checkForUpdates', () => checkForUpdates())
+  ipcMain.handle('app:openExternal', (_e, url: string) => shell.openExternal(url))
 }
