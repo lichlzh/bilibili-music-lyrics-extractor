@@ -1,6 +1,6 @@
 {
   "name": "bilibili-mp3-downloader",
-  "version": "0.0.5",
+  "version": "0.0.6",
   "description": "B站视频下载并转为 MP3 的跨平台桌面应用（仅供个人学习/欣赏）",
   "author": "lz",
   "license": "MIT",
