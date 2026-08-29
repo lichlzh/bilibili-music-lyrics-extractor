@@ -3,6 +3,8 @@ import path from 'node:path'
 import { spawn } from 'node:child_process'
 import iconv from 'iconv-lite'
 import { getFfprobePath, getYtDlpPath, getFfmpegPath } from './binaries'
+import { fetchWithTimeout } from './http'
+import { logInfo } from './logger'
 import type { AlignMethod, LyricsInfo, SongType } from '../shared/types'
 
 const LRCLIB = 'https://lrclib.net/api'
@@ -59,18 +61,51 @@ function runAndGet(cmd: string, args: string[]): Promise<string> {
   })
 }
 
+/** 采集命令的 stderr（ffmpeg 把元信息写在 stderr），忽略退出码。 */
+function runAndGetStderr(cmd: string, args: string[]): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const child = spawn(cmd, args, { windowsHide: true })
+    let out = ''
+    child.stdout.on('data', () => {})
+    child.stderr.on('data', (d) => (out += d.toString()))
+    child.on('close', () => resolve(out))
+    child.on('error', reject)
+  })
+}
+
+/**
+ * 用随应用分发的 ffmpeg 解析音频时长（读容器头，几乎零成本）。
+ * 避免客户机未安装 ffprobe 时，为取时长对每首歌都发一次网络请求。
+ */
+async function ffmpegDuration(mp3Path: string): Promise<number | null> {
+  const bin = getFfmpegPath() || 'ffmpeg'
+  const out = await runAndGetStderr(bin, ['-i', mp3Path])
+  const m = out.match(/Duration:\s*(\d+):(\d+):(\d+(?:\.\d+)?)/)
+  if (!m) return null
+  const n = parseInt(m[1], 10) * 3600 + parseInt(m[2], 10) * 60 + parseFloat(m[3])
+  return Number.isFinite(n) && n > 0 ? n : null
+}
+
 async function searchNetease(query: string): Promise<LrcCandidate[]> {
   const headers = { 'User-Agent': 'Mozilla/5.0', Referer: 'https://music.163.com' }
   const enc = encodeURIComponent(query)
   try {
-    const res = await fetch(`https://music.163.com/api/search/get/?s=${enc}&type=1&limit=5`, { headers })
+    const res = await fetchWithTimeout(
+      `https://music.163.com/api/search/get/?s=${enc}&type=1&limit=5`,
+      { headers },
+      6000
+    )
     if (!res.ok) return []
     const data = (await res.json()) as { result?: { songs?: NeteaseSong[] } }
     const songs = data.result?.songs ?? []
     const cands: LrcCandidate[] = []
     for (const s of songs.slice(0, 5)) {
       try {
-        const lr = await fetch(`https://music.163.com/api/song/lyric?id=${s.id}&lv=1&kv=1&tv=-1`, { headers })
+        const lr = await fetchWithTimeout(
+          `https://music.163.com/api/song/lyric?id=${s.id}&lv=1&kv=1&tv=-1`,
+          { headers },
+          6000
+        )
         if (!lr.ok) continue
         const lj = (await lr.json()) as { lrc?: { lyric?: string }; code?: number }
         if (lj.code && lj.code < 0) continue
@@ -89,7 +124,8 @@ async function searchNetease(query: string): Promise<LrcCandidate[]> {
       }
     }
     return cands
-  } catch {
+  } catch (e) {
+    logInfo('lyrics', `网易云检索失败：${e instanceof Error ? e.message : String(e)}`)
     return []
   }
 }
@@ -116,6 +152,14 @@ export async function getAudioDuration(mp3Path: string, url: string): Promise<nu
       /* 忽略，尝试回退 */
     }
   }
+  // 其次用内置的 ffmpeg 读容器头取时长，避免为取时长发网络请求
+  try {
+    const n = await ffmpegDuration(mp3Path)
+    if (n != null) return n
+  } catch (e) {
+    logInfo('lyrics', `ffmpeg 解析时长失败：${e instanceof Error ? e.message : String(e)}`)
+  }
+  // 最后才回退到联网查询元数据
   try {
     const yt = await getYtDlpPath()
     const out = await runAndGet(yt, ['--skip-download', '--print', '%(duration)s', url])
@@ -146,11 +190,12 @@ async function searchLrclib(query: string): Promise<LrcCandidate[]> {
   }
   const doSearch = async (url: string): Promise<LrcCandidate[]> => {
     try {
-      const res = await fetch(url, { headers })
+      const res = await fetchWithTimeout(url, { headers }, 6000)
       if (!res.ok) return []
       const data = (await res.json()) as LrcCandidate[]
       return Array.isArray(data) ? data : []
-    } catch {
+    } catch (e) {
+      logInfo('lyrics', `lrclib 检索失败：${e instanceof Error ? e.message : String(e)}`)
       return []
     }
   }

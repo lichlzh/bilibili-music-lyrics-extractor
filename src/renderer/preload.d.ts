@@ -11,6 +11,7 @@ export interface AppApi {
   openLyrics: (path: string) => Promise<string>
   checkForUpdates: () => Promise<void>
   openExternal: (url: string) => Promise<void>
+  openLogDir: () => Promise<string>
   onProgress: (cb: (payload: ProgressPayload) => void) => () => void
   onUpdateStatus: (cb: (status: UpdateState) => void) => () => void
 }

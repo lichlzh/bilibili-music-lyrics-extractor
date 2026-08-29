@@ -4,6 +4,7 @@ import { app } from 'electron'
 import { spawn } from 'node:child_process'
 import { promises as fsp } from 'node:fs'
 import path from 'node:path'
+import { logInfo } from './logger'
 
 // yt-dlp-wrap 在不同打包形态下导出位置不同，做一次兼容解析
 const YtDlpWrap: any =
@@ -43,34 +44,47 @@ export async function initBinaries(): Promise<void> {
   systemFfmpeg = (await resolveSystem('ffmpeg')) !== null
 }
 
-/** 优先使用系统已安装的 yt-dlp；打包后优先用随应用分发的副本(避免运行时访问 GitHub)；
- *  最后才回退到运行时从 GitHub 下载并缓存到 userData。 */
+/** 定位随应用分发的 yt-dlp（构建期已下载进 resources/bin/），不存在则返回 null。 */
+async function resolveBundledYtDlp(): Promise<string | null> {
+  const bundledName =
+    process.platform === 'win32' ? 'yt-dlp.exe' : process.platform === 'darwin' ? 'yt-dlp-macos' : 'yt-dlp-linux'
+  const bundled = path.join(process.resourcesPath, 'bin', bundledName)
+  if (!(await exists(bundled))) return null
+  if (process.platform !== 'win32') {
+    try {
+      await fsp.chmod(bundled, 0o755)
+    } catch {
+      /* 忽略：权限已正确时无需处理 */
+    }
+  }
+  return bundled
+}
+
+/**
+ * 解析 yt-dlp 可执行文件路径。
+ * 打包后优先使用内置副本：既避免运行时访问 GitHub，也避免误用客户机 PATH 里
+ * 旧版/损坏的 yt-dlp；内置缺失才回退系统 PATH，最后才是运行时下载。
+ */
 export async function getYtDlpPath(): Promise<string> {
   if (ytDlpPathCache) return ytDlpPathCache
 
-  const system = await resolveSystem('yt-dlp')
-  if (system) {
-    ytDlpPathCache = system
-    return system
-  }
-
-  // 打包后优先使用内置二进制（构建期已通过 scripts/fetch-yt-dlp.cjs 下载进 resources/bin/）
   if (app.isPackaged) {
-    const bundledName =
-      process.platform === 'win32' ? 'yt-dlp.exe' : process.platform === 'darwin' ? 'yt-dlp-macos' : 'yt-dlp-linux'
-    const bundled = path.join(process.resourcesPath, 'bin', bundledName)
-    if (await exists(bundled)) {
-      if (process.platform !== 'win32') {
-        try {
-          await fsp.chmod(bundled, 0o755)
-        } catch {
-          /* 忽略：权限已正确时无需处理 */
-        }
-      }
+    const bundled = await resolveBundledYtDlp()
+    if (bundled) {
+      logInfo('binaries', `使用内置 yt-dlp: ${bundled}`)
       ytDlpPathCache = bundled
       return bundled
     }
   }
+
+  const system = await resolveSystem('yt-dlp')
+  if (system) {
+    logInfo('binaries', `使用系统 yt-dlp (PATH): ${system}`)
+    ytDlpPathCache = system
+    return system
+  }
+
+  logInfo('binaries', '未找到内置/系统 yt-dlp，将尝试运行时从 GitHub 下载')
 
   const dir = path.join(app.getPath('userData'), 'bin')
   await fsp.mkdir(dir, { recursive: true })

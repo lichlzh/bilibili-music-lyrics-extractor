@@ -13,6 +13,7 @@ const api = {
   openLyrics: (p: string): Promise<string> => ipcRenderer.invoke('lyrics:open', p),
   checkForUpdates: (): Promise<void> => ipcRenderer.invoke('app:checkForUpdates'),
   openExternal: (url: string): Promise<void> => ipcRenderer.invoke('app:openExternal', url),
+  openLogDir: (): Promise<string> => ipcRenderer.invoke('app:openLogDir'),
   onProgress: (cb: (payload: ProgressPayload) => void): (() => void) => {
     const listener = (_e: unknown, payload: ProgressPayload): void => cb(payload)
     ipcRenderer.on('download:progress', listener)

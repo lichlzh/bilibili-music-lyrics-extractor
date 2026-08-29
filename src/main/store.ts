@@ -11,15 +11,27 @@ const defaultSettings: Settings = {
   alignMethod: 'signal'
 }
 
+/**
+ * 归一化歌曲状态：下载中/转码中属于瞬时状态，落盘与载入时统一回退为等待中。
+ * 否则应用中途退出后，这些任务会永久卡在「下载中」——既不会被重跑也无法重置。
+ */
+function normalizeSongs(songs: SongItem[]): SongItem[] {
+  return songs.map((s) =>
+    s.status === 'downloading' || s.status === 'converting'
+      ? { ...s, status: 'waiting' as const, percent: 0 }
+      : s
+  )
+}
+
 export function loadStore(): StoreData {
   return {
-    songs: (store.get('songs') as SongItem[]) ?? [],
+    songs: normalizeSongs((store.get('songs') as SongItem[]) ?? []),
     settings: { ...defaultSettings, ...(store.get('settings') as Settings) }
   }
 }
 
 export function saveSongs(songs: SongItem[]): void {
-  store.set('songs', songs)
+  store.set('songs', normalizeSongs(songs))
 }
 
 export function saveSettings(settings: Settings): void {

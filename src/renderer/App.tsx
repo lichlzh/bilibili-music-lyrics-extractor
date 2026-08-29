@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react'
-import { Music, Play, Trash2, ShieldAlert } from 'lucide-react'
+import { Music, Play, Trash2, ShieldAlert, FileText } from 'lucide-react'
 import type { AlignMethod, Settings, SongItem, SongType } from '../shared/types'
 import { AddSongForm } from './components/AddSongForm'
 import { SongList } from './components/SongList'
@@ -194,7 +194,17 @@ export default function App() {
           <ShieldAlert className="h-4 w-4 text-amber-400" />
           仅供个人学习 / 欣赏使用，请遵守 B 站及版权相关规定。
         </span>
-        <UpdateChecker />
+        <div className="flex shrink-0 items-center gap-3">
+          <button
+            onClick={() => void window.api.openLogDir()}
+            className="flex items-center gap-1.5 text-slate-400 transition hover:text-slate-200"
+            title="打开日志目录（排障用）"
+          >
+            <FileText className="h-3.5 w-3.5" />
+            日志
+          </button>
+          <UpdateChecker />
+        </div>
       </footer>
     </div>
   )

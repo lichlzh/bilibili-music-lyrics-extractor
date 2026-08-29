@@ -3,6 +3,7 @@ import path from 'node:path'
 import { BrowserWindow } from 'electron'
 import { getFfmpegPath, getYtDlpPath, sanitizeName } from './binaries'
 import { fetchAndSaveLyrics, calibrateLyrics, saveLyricsFile, getAudioDuration } from './lyrics'
+import { logError, logInfo } from './logger'
 import type {
   AlignMethod,
   DownloadStatus,
@@ -18,6 +19,7 @@ export class DownloadManager {
   private concurrency = 2
   private queue: SongItem[] = []
   private active = new Map<string, ChildProcess>()
+  private canceled = new Set<string>()
   private outputDir = ''
   private settings: Settings = { outputDir: '', concurrency: 2, alignMethod: 'signal' }
 
@@ -45,13 +47,15 @@ export class DownloadManager {
   }
 
   cancel(id: string): void {
+    this.queue = this.queue.filter((i) => i.id !== id)
     const child = this.active.get(id)
     if (child) {
+      // 先标记再杀进程，由 close/error 回调统一结算（settle 幂等），
+      // 避免 running 被扣两次导致并发数漂移失控
+      this.canceled.add(id)
       child.kill('SIGTERM')
-      this.active.delete(id)
-      this.running = Math.max(0, this.running - 1)
+      return
     }
-    this.queue = this.queue.filter((i) => i.id !== id)
     this.emit(id, 0, 'canceled')
     this.pump()
   }
@@ -65,6 +69,14 @@ export class DownloadManager {
 
   private async run(item: SongItem): Promise<void> {
     this.running++
+    // 结算幂等：close / error / catch 任一先到即生效，避免重复扣减 running
+    let settled = false
+    const settle = (): void => {
+      if (settled) return
+      settled = true
+      this.running = Math.max(0, this.running - 1)
+      this.active.delete(item.id)
+    }
     this.emit(item.id, 0, 'downloading')
     try {
       const ytDlp = await getYtDlpPath()
@@ -86,8 +98,10 @@ export class DownloadManager {
       ]
       if (ffmpeg) args.splice(5, 0, '--ffmpeg-location', ffmpeg)
 
-      const child = spawn(ytDlp, args)
+      // windowsHide：避免 Windows 上每次下载弹出控制台黑框
+      const child = spawn(ytDlp, args, { windowsHide: true })
       this.active.set(item.id, child)
+      logInfo('download', `启动 yt-dlp: ${item.name || item.url} -> ${outTemplate}`)
 
       let stderrText = ''
       const onData = (chunk: Buffer): void => {
@@ -101,10 +115,16 @@ export class DownloadManager {
       child.stderr.on('data', onData)
 
       child.on('close', (code) => {
-        this.running--
-        this.active.delete(item.id)
+        settle()
+        // 用户主动取消：不按失败处理
+        if (this.canceled.delete(item.id)) {
+          this.emit(item.id, 0, 'canceled')
+          this.pump()
+          return
+        }
         const finalPath = outTemplate.replace('%(ext)s', 'mp3')
         if (code === 0) {
+          logInfo('download', `完成: ${finalPath}`)
           this.emit(item.id, 100, 'done', '已保存为 MP3', finalPath)
           void this.attachLyrics(item, finalPath)
         } else {
@@ -116,18 +136,20 @@ export class DownloadManager {
             : tail
               ? `yt-dlp 失败：${tail}`
               : `yt-dlp 退出码 ${code}`
+          logError('download', `${item.name || item.url} 失败: ${hint}`)
           this.emit(item.id, 0, 'error', hint)
         }
         this.pump()
       })
       child.on('error', (err) => {
-        this.running--
-        this.active.delete(item.id)
+        settle()
+        this.canceled.delete(item.id)
+        logError('download', `无法启动 yt-dlp：${err.message}`)
         this.emit(item.id, 0, 'error', `无法启动 yt-dlp：${err.message}（可能被系统/杀软拦截）`)
         this.pump()
       })
     } catch (e) {
-      this.running--
+      settle()
       this.emit(item.id, 0, 'error', e instanceof Error ? e.message : String(e))
       this.pump()
     }

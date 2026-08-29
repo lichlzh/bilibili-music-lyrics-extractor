@@ -1,4 +1,6 @@
 import { app, type BrowserWindow } from 'electron'
+import { fetchWithTimeout } from './http'
+import { logInfo } from './logger'
 
 const REPO = 'lichlzh/bilibili-music-lyrics-extractor'
 const RELEASES_PAGE = `https://github.com/${REPO}/releases`
@@ -41,22 +43,29 @@ function compareVersion(a: string, b: string): number {
 export async function checkForUpdates(silent = false): Promise<void> {
   if (!silent) emit({ state: 'checking' })
   try {
-    const res = await fetch(LATEST_API, {
-      headers: {
-        Accept: 'application/vnd.github+json',
-        'User-Agent': 'bilibili-mp3-downloader'
-      }
-    })
+    const res = await fetchWithTimeout(
+      LATEST_API,
+      {
+        headers: {
+          Accept: 'application/vnd.github+json',
+          'User-Agent': 'bilibili-mp3-downloader'
+        }
+      },
+      8000
+    )
     if (!res.ok) throw new Error(`GitHub API 返回 ${res.status}`)
     const data = (await res.json()) as { tag_name: string; html_url: string; body?: string }
     const latest = data.tag_name.replace(/^v/i, '')
     const current = app.getVersion()
     if (compareVersion(latest, current) > 0) {
+      logInfo('updater', `发现新版本 ${latest}（当前 ${current}）`)
       emit({ state: 'available', version: latest, url: data.html_url, notes: data.body })
-    } else if (!silent) {
-      emit({ state: 'latest', version: current })
+    } else {
+      logInfo('updater', `已是最新 ${current}`)
+      if (!silent) emit({ state: 'latest', version: current })
     }
-  } catch {
+  } catch (e) {
+    logInfo('updater', `检查更新失败：${e instanceof Error ? e.message : String(e)}`)
     // 网络不可达（如中国网络无法连接 GitHub）时，给出手动查看入口
     if (!silent) {
       emit({ state: 'error', message: '无法连接 GitHub，请手动查看更新', url: RELEASES_PAGE })

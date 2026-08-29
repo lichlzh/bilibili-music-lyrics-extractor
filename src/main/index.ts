@@ -4,6 +4,7 @@ import { existsSync } from 'node:fs'
 import { registerIpc } from './ipc'
 import { initBinaries } from './binaries'
 import { checkForUpdates } from './updater'
+import { initLogger, logInfo } from './logger'
 
 let mainWindow: BrowserWindow | null = null
 
@@ -38,7 +39,11 @@ function createWindow(): void {
   void checkForUpdates(true)
 }
 
-app.whenReady().then(createWindow)
+app.whenReady().then(() => {
+  initLogger()
+  logInfo('app', `启动 v${app.getVersion()} (${process.platform} ${process.arch})`)
+  createWindow()
+})
 
 app.on('window-all-closed', () => {
   if (process.platform !== 'darwin') app.quit()
